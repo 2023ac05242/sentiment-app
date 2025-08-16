@@ -1,8 +1,6 @@
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
 *.egg-info/
 .venv/
 env/
@@ -18,14 +16,17 @@ Thumbs.db
 dist/
 build/
 
-# App-specific (do NOT push big local model or caches)
+# Caches / local-only assets
 hf-cache/
+
+# If you are NOT committing local models:
 models/
+
+# Ignore bulk data files but keep our requirement files
 *.csv
 *.txt
+!backend/requirements.txt
+!backend/requirements-hf.txt
 
-# Frontend (we’re plain HTML, but keep this in case)
+# Frontend (in case you add tooling later)
 node_modules/
-models/
-hf-cache/
-models/ 
