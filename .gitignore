@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+env/
+venv/
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Builds
+dist/
+build/
+
+# App-specific (do NOT push big local model or caches)
+hf-cache/
+models/
+*.csv
+*.txt
+
+# Frontend (we’re plain HTML, but keep this in case)
+node_modules/
+models/
+hf-cache/

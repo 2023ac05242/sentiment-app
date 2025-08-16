@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Favicon to avoid /favicon.ico 404 -->
+  <link rel="icon" href="data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3ctext y='14' font-size='14'%3e😊%3c/text%3e%3c/svg%3e">
+  <title>Sentiment Analyzer</title>
+  <style>
+    :root { --primary:#1f2937; --accent:#2563eb; --ok:#16a34a; --warn:#f59e0b; --bad:#dc2626; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji';
+           background:#f8fafc; margin:0; color:#0f172a; }
+    header { background:linear-gradient(90deg, var(--accent), #7c3aed); color:white; padding:24px; }
+    h1 { margin:0; font-size: clamp(20px, 3vw, 28px); }
+    .container { max-width: 980px; margin: 20px auto; background:white; border-radius:16px; box-shadow: 0 10px 25px rgba(2,6,23,.08); padding:24px; }
+    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
+    @media (min-width: 900px) { .grid { grid-template-columns: 2fr 1fr; } }
+    label { font-weight:600; font-size:14px; }
+    textarea { width:100%; height:160px; border:1px solid #e5e7eb; border-radius:12px; padding:12px; font-size:14px; }
+    input[type="file"], select { width:100%; padding:10px; border:1px solid #e5e7eb; border-radius:12px; background:#fafafa; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap: wrap; }
+    button { background: var(--accent); color:white; border:none; padding:12px 18px; border-radius:12px; cursor:pointer; font-weight:600; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .chip { display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; font-weight:700; color:white; }
+    .chip.positive { background: var(--ok); }
+    .chip.neutral  { background: var(--warn); }
+    .chip.negative { background: var(--bad); }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:10px; border-bottom:1px solid #eef2f7; font-size:13px; text-align:left; vertical-align: top; }
+    .muted { color:#6b7280; font-size:12px; }
+    .card { background:#fafafa; border:1px solid #eef2f7; border-radius:12px; padding:16px; }
+    footer { text-align:center; color:#6b7280; padding:20px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Sentiment Analyzer — Positive / Neutral / Negative</h1>
+    <div class="muted">Paste text, or upload a .txt / .csv. Choose engine: VADER (fast) or Transformer (accurate, heavier).</div>
+  </header>
+
+  <div class="container">
+    <div class="grid">
+      <section>
+        <label for="text">Enter text</label>
+        <textarea id="text" placeholder="e.g., I loved the product! It was fast, friendly, and exactly what I needed."></textarea>
+
+        <div class="row">
+          <div style="flex:1; min-width: 240px">
+            <label for="file">…or upload file (.txt or .csv)</label>
+            <input id="file" type="file" accept=".txt,.csv" />
+          </div>
+          <div style="width:220px; min-width: 220px">
+            <label for="column">CSV text column (optional)</label>
+            <input id="column" type="text" placeholder="auto-detect" style="width:100%; padding:10px; border:1px solid #e5e7eb; border-radius:12px;"/>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label for="engine">Engine</label>
+            <select id="engine">
+              <option value="vader">VADER (fast, small)</option>
+              <option value="hf">Transformer (SST-2)</option>
+            </select>
+          </div>
+          <button id="analyze">Analyze Sentiment</button>
+          <span id="status" class="muted"></span>
+        </div>
+      </section>
+
+      <aside class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <h3 style="margin:0">Overall</h3>
+          <span id="overallChip" class="chip neutral">Neutral</span>
+        </div>
+        <canvas id="overallChart" height="220"></canvas>
+        <div class="muted">*Bar shows average Positive/Neutral/Negative across all items.</div>
+      </aside>
+    </div>
+
+    <section style="margin-top:20px">
+      <h3 style="margin:0 0 6px 0">Details</h3>
+      <div class="muted" id="detailsNote">Per-item predictions will appear below.</div>
+      <div style="overflow:auto">
+        <table id="resultsTable" style="display:none">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Text</th>
+              <th>Preprocessed</th>
+              <th>Engine</th>
+              <th>Label</th>
+              <th>Positive</th>
+              <th>Neutral</th>
+              <th>Negative</th>
+              <th>Compound</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <footer>Built with FastAPI + NLTK VADER + (optional) Transformers</footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const API = 'http://127.0.0.1:8000';
+    const $ = (s) => document.querySelector(s);
+    const statusEl = $('#status');
+    const chip = $('#overallChip');
+    const analyzeBtn = $('#analyze');
+    let chart;
+
+    function setChip(label){
+      chip.classList.remove('positive','neutral','negative');
+      chip.classList.add(label);
+      chip.textContent = label.charAt(0).toUpperCase()+label.slice(1);
+    }
+
+    function renderChart(pos, neu, neg){
+      const ctx = document.getElementById('overallChart').getContext('2d');
+      if(chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Positive','Neutral','Negative'],
+          datasets: [{ label: 'Average Sentiment', data: [pos, neu, neg] }]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true, max: 1 } } }
+      });
+    }
+
+    async function analyze(){
+      analyzeBtn.disabled = true;
+      statusEl.textContent = 'Analyzing…';
+
+      const fd = new FormData();
+      const text = $('#text').value.trim();
+      const file = $('#file').files[0];
+      const column = $('#column').value.trim();
+      const engine = $('#engine').value;
+
+      if(text) fd.append('text', text);
+      if(file) fd.append('file', file);
+      if(column) fd.append('column', column);
+      fd.append('model', engine);
+
+      // Helper to extract readable error
+      const readError = async (res) => {
+        let msg = `HTTP ${res.status}`;
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const j = await res.json().catch(()=>null);
+          if (j && (j.detail || j.message)) msg += `: ${j.detail || j.message}`;
+        } else {
+          const t = await res.text().catch(()=> '');
+          if (t) msg += `: ${t.slice(0,300)}`;
+        }
+        return msg;
+      };
+
+      try {
+        const res = await fetch(`${API}/analyze`, { method:'POST', body: fd });
+        if (!res.ok) throw new Error(await readError(res));
+        const data = await res.json();
+
+        const agg = data.aggregate || {positive:0, neutral:1, negative:0, label:'neutral'};
+        setChip(agg.label);
+        renderChart(agg.positive, agg.neutral, agg.negative);
+
+        const table = $('#resultsTable');
+        const tbody = table.querySelector('tbody');
+        tbody.innerHTML = '';
+        (data.predictions || []).forEach((p, i) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${i+1}</td>
+            <td>${p.text.replaceAll('<','&lt;')}</td>
+            <td class="muted">${p.preprocessed_text.replaceAll('<','&lt;')}</td>
+            <td>${p.engine}</td>
+            <td><span class="chip ${p.label}">${p.label}</span></td>
+            <td>${(p.scores.positive ?? 0).toFixed(3)}</td>
+            <td>${(p.scores.neutral ?? 0).toFixed(3)}</td>
+            <td>${(p.scores.negative ?? 0).toFixed(3)}</td>
+            <td>${(p.scores.compound ?? p.scores.confidence ?? 0).toFixed(3)}</td>`;
+          tbody.appendChild(tr);
+        });
+        table.style.display = data.predictions && data.predictions.length ? 'table' : 'none';
+        $('#detailsNote').style.display = 'none';
+        statusEl.textContent = `Engine: ${data.engine}, Items: ${data.count}`;
+      } catch (e) {
+        statusEl.textContent = 'Error: ' + e.message;
+      } finally {
+        analyzeBtn.disabled = false;
+      }
+    }
+
+    // Tiny health check on load to confirm backend reachability
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const r = await fetch(`${API}/health`);
+        if (r.ok) {
+          const j = await r.json().catch(()=>null);
+          statusEl.textContent = `API OK (${j?.default_engine || 'vader'})`;
+        } else {
+          statusEl.textContent = 'API health check failed';
+        }
+      } catch {
+        statusEl.textContent = 'API unreachable at ' + API;
+      }
+    });
+
+    $('#analyze').addEventListener('click', analyze);
+  </script>
+</body>
+</html>
