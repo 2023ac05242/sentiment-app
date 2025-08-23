@@ -66,7 +66,7 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('dis
 uvicorn backend.app:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Open in your browser:
+Open in your browser (wait for for a minute after previous step for application to start):
 
 ```
 http://127.0.0.1:8000/
